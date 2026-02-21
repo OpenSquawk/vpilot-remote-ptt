@@ -1,0 +1,5 @@
+{
+  "ptt_key": "caps_lock",
+  "http_port": 8080,
+  "ws_port": 8765
+}

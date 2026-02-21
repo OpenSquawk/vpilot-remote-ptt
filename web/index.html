@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Remote VATSIM</title>
+<style>
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-surface: #16213e;
+    --text-primary: #e0e0e0;
+    --text-secondary: #8888a0;
+    --text-muted: #555570;
+    --accent-green: #00e676;
+    --accent-red: #ff1744;
+    --accent-blue: #448aff;
+    --accent-orange: #ff9100;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* --- Header --- */
+
+  .header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+  }
+
+  .title span {
+    color: var(--accent-blue);
+  }
+
+  /* --- Connection Status --- */
+
+  .connection-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    transition: color 0.3s ease;
+  }
+
+  .connection-status .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .connection-status.connected .dot {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+  }
+
+  .connection-status.connected {
+    color: var(--accent-green);
+  }
+
+  .connection-status.disconnected .dot {
+    background: var(--accent-red);
+    box-shadow: 0 0 6px var(--accent-red);
+  }
+
+  .connection-status.disconnected {
+    color: var(--accent-red);
+  }
+
+  .connection-status.connecting .dot {
+    background: var(--accent-orange);
+    box-shadow: 0 0 6px var(--accent-orange);
+    animation: blink 1s ease-in-out infinite;
+  }
+
+  .connection-status.connecting {
+    color: var(--accent-orange);
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* --- PTT Button --- */
+
+  .ptt-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .ptt-ring {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1e1e3a, #2a2a4a);
+    padding: 6px;
+    transition: box-shadow 0.25s ease, background 0.25s ease;
+  }
+
+  .ptt-button {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 3px solid #333355;
+    background: radial-gradient(circle at 40% 35%, #2e2e50, #1a1a30);
+    color: var(--text-secondary);
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    outline: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ptt-button::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  /* Connected / idle */
+  .ptt-ring.ready {
+    box-shadow: 0 0 20px rgba(0, 230, 118, 0.1), inset 0 0 20px rgba(0, 230, 118, 0.03);
+  }
+
+  .ptt-ring.ready .ptt-button {
+    border-color: rgba(0, 230, 118, 0.4);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+
+  /* Transmitting */
+  .ptt-ring.transmitting {
+    background: linear-gradient(135deg, #3a1020, #4a1525);
+    box-shadow: 0 0 40px rgba(255, 23, 68, 0.35), 0 0 80px rgba(255, 23, 68, 0.15);
+    animation: pulse-ring 0.9s ease-in-out infinite;
+  }
+
+  .ptt-ring.transmitting .ptt-button {
+    border-color: var(--accent-red);
+    background: radial-gradient(circle at 40% 35%, #5a1a2a, #3a0a15);
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 23, 68, 0.6);
+  }
+
+  .ptt-ring.transmitting .ptt-button::after {
+    opacity: 1;
+    background: radial-gradient(circle, rgba(255, 23, 68, 0.08) 0%, transparent 70%);
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { box-shadow: 0 0 40px rgba(255, 23, 68, 0.35), 0 0 80px rgba(255, 23, 68, 0.15); }
+    50% { box-shadow: 0 0 55px rgba(255, 23, 68, 0.5), 0 0 100px rgba(255, 23, 68, 0.25); }
+  }
+
+  /* Disconnected / offline */
+  .ptt-ring.offline {
+    opacity: 0.45;
+  }
+
+  .ptt-ring.offline .ptt-button {
+    border-color: #2a2a3a;
+    background: radial-gradient(circle at 40% 35%, #1e1e2e, #141420);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  /* --- State Label --- */
+
+  .state-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    transition: color 0.25s ease;
+    min-height: 1.2em;
+  }
+
+  .state-label.ready {
+    color: var(--text-secondary);
+  }
+
+  .state-label.transmitting {
+    color: var(--accent-red);
+  }
+
+  .state-label.offline {
+    color: var(--text-muted);
+  }
+
+  /* --- Footer --- */
+
+  .footer {
+    position: fixed;
+    bottom: 1.25rem;
+    text-align: center;
+    font-size: 0.7rem;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+  }
+
+  .footer .ws-url {
+    opacity: 0.7;
+  }
+
+  /* --- Keyboard hint --- */
+
+  .keyboard-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    opacity: 0.6;
+  }
+
+  .keyboard-hint kbd {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border: 1px solid #3a3a55;
+    border-radius: 3px;
+    background: #22223a;
+    font-family: inherit;
+    font-size: 0.85em;
+  }
+
+  /* --- Mobile adjustments --- */
+
+  @media (max-height: 500px) {
+    .header { margin-bottom: 1rem; }
+    .ptt-container { margin: 1rem 0; gap: 1rem; }
+    .ptt-ring { width: 160px; height: 160px; }
+    .ptt-button { font-size: 1.3rem; }
+    .title { font-size: 1.3rem; margin-bottom: 0.5rem; }
+  }
+
+  @media (max-width: 360px) {
+    .ptt-ring { width: 180px; height: 180px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="title">Remote <span>VATSIM</span></div>
+    <div class="connection-status disconnected" id="connectionStatus">
+      <span class="dot"></span>
+      <span id="connectionText">Disconnected</span>
+    </div>
+  </div>
+
+  <div class="ptt-container">
+    <div class="ptt-ring offline" id="pttRing">
+      <button class="ptt-button" id="pttButton" aria-label="Push to Talk">
+        OFFLINE
+      </button>
+    </div>
+    <div class="state-label offline" id="stateLabel">No connection</div>
+    <div class="keyboard-hint" id="keyboardHint"><kbd>Space</kbd> to transmit</div>
+  </div>
+
+  <div class="footer">
+    <div class="ws-url" id="wsUrl"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // --- DOM refs ---
+  const pttRing = document.getElementById('pttRing');
+  const pttButton = document.getElementById('pttButton');
+  const stateLabel = document.getElementById('stateLabel');
+  const connectionStatus = document.getElementById('connectionStatus');
+  const connectionText = document.getElementById('connectionText');
+  const wsUrlLabel = document.getElementById('wsUrl');
+  const keyboardHint = document.getElementById('keyboardHint');
+
+  // --- State ---
+  let ws = null;
+  let isConnected = false;
+  let isTransmitting = false;
+  let reconnectDelay = 1000;
+  let reconnectTimer = null;
+  const MAX_RECONNECT_DELAY = 10000;
+  // WS port can be overridden via ?ws_port=XXXX, otherwise defaults to 8765
+  var wsPort = new URLSearchParams(window.location.search).get('ws_port') || '8765';
+  const WS_URL = 'ws://' + window.location.hostname + ':' + wsPort;
+
+  wsUrlLabel.textContent = WS_URL;
+
+  // --- UI Helpers ---
+
+  function setUIState(state) {
+    // state: 'offline' | 'ready' | 'transmitting'
+    pttRing.className = 'ptt-ring ' + state;
+    stateLabel.className = 'state-label ' + state;
+
+    switch (state) {
+      case 'offline':
+        pttButton.textContent = 'OFFLINE';
+        stateLabel.textContent = 'No connection';
+        keyboardHint.style.visibility = 'hidden';
+        break;
+      case 'ready':
+        pttButton.textContent = 'PTT';
+        stateLabel.textContent = 'Ready';
+        keyboardHint.style.visibility = 'visible';
+        break;
+      case 'transmitting':
+        pttButton.textContent = 'ON AIR';
+        stateLabel.textContent = 'Transmitting';
+        keyboardHint.style.visibility = 'visible';
+        break;
+    }
+  }
+
+  function setConnectionUI(state) {
+    // state: 'connected' | 'disconnected' | 'connecting'
+    connectionStatus.className = 'connection-status ' + state;
+
+    switch (state) {
+      case 'connected':
+        connectionText.textContent = 'Connected';
+        break;
+      case 'disconnected':
+        connectionText.textContent = 'Disconnected';
+        break;
+      case 'connecting':
+        connectionText.textContent = 'Connecting\u2026';
+        break;
+    }
+  }
+
+  // --- PTT Actions ---
+
+  function pttOn() {
+    if (!isConnected || isTransmitting) return;
+    isTransmitting = true;
+    setUIState('transmitting');
+    sendMessage({ action: 'ptt', state: 'on' });
+  }
+
+  function pttOff() {
+    if (!isTransmitting) return;
+    isTransmitting = false;
+    if (isConnected) {
+      setUIState('ready');
+    } else {
+      setUIState('offline');
+    }
+    sendMessage({ action: 'ptt', state: 'off' });
+  }
+
+  function sendMessage(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(obj));
+    }
+  }
+
+  // --- WebSocket ---
+
+  function connect() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    setConnectionUI('connecting');
+
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = function () {
+      isConnected = true;
+      reconnectDelay = 1000;
+      setConnectionUI('connected');
+      setUIState('ready');
+    };
+
+    ws.onclose = function () {
+      isConnected = false;
+      if (isTransmitting) {
+        isTransmitting = false;
+      }
+      setConnectionUI('disconnected');
+      setUIState('offline');
+      scheduleReconnect();
+    };
+
+    ws.onerror = function () {
+      // onerror is always followed by onclose, so nothing special here
+    };
+
+    ws.onmessage = function (event) {
+      try {
+        var data = JSON.parse(event.data);
+        handleServerMessage(data);
+      } catch (e) {
+        // Ignore malformed messages
+      }
+    };
+  }
+
+  function handleServerMessage(data) {
+    if (data.status === 'ptt_on') {
+      if (!isTransmitting) {
+        isTransmitting = true;
+        setUIState('transmitting');
+      }
+    } else if (data.status === 'ptt_off') {
+      if (isTransmitting) {
+        isTransmitting = false;
+        setUIState('ready');
+      }
+    } else if (data.status === 'connected') {
+      setUIState('ready');
+    }
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+  }
+
+  // --- Event Handlers ---
+
+  // Mouse
+  pttButton.addEventListener('mousedown', function (e) {
+    if (e.button === 0) pttOn();
+  });
+
+  pttButton.addEventListener('mouseup', function (e) {
+    if (e.button === 0) pttOff();
+  });
+
+  pttButton.addEventListener('mouseleave', function () {
+    pttOff();
+  });
+
+  // Touch
+  pttButton.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    pttOn();
+  }, { passive: false });
+
+  pttButton.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    pttOff();
+  }, { passive: false });
+
+  pttButton.addEventListener('touchcancel', function (e) {
+    e.preventDefault();
+    pttOff();
+  }, { passive: false });
+
+  // Prevent context menu on long press
+  pttButton.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+  });
+
+  // Keyboard (spacebar)
+  var spaceHeld = false;
+
+  document.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      if (!spaceHeld) {
+        spaceHeld = true;
+        pttOn();
+      }
+    }
+  });
+
+  document.addEventListener('keyup', function (e) {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      spaceHeld = false;
+      pttOff();
+    }
+  });
+
+  // --- Prevent drag on button ---
+  pttButton.addEventListener('dragstart', function (e) {
+    e.preventDefault();
+  });
+
+  // --- Init ---
+  connect();
+})();
+</script>
+
+</body>
+</html>
